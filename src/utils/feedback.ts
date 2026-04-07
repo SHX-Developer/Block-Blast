@@ -2,23 +2,40 @@ type HapticLevel = 'light' | 'medium' | 'heavy';
 type HapticNotification = 'success' | 'warning' | 'error';
 
 interface TelegramHapticFeedback {
-  impactOccurred?: (style: HapticLevel) => void;
-  notificationOccurred?: (type: HapticNotification) => void;
+  impactOccurred: (style: HapticLevel) => void;
+  notificationOccurred: (type: HapticNotification) => void;
 }
 
 interface TelegramWebApp {
-  HapticFeedback?: TelegramHapticFeedback;
+  ready: () => void;
+  expand: () => void;
+  disableVerticalSwipes?: () => void;
+  HapticFeedback: TelegramHapticFeedback;
 }
 
-interface TelegramGlobal {
-  WebApp?: TelegramWebApp;
+declare global {
+  interface Window {
+    Telegram?: { WebApp?: TelegramWebApp };
+  }
 }
 
 let audioCtx: AudioContext | null = null;
 
+function getTelegramApp(): TelegramWebApp | undefined {
+  return window.Telegram?.WebApp;
+}
+
 function getTelegramHaptics(): TelegramHapticFeedback | undefined {
-  const tg = (window as Window & { Telegram?: TelegramGlobal }).Telegram;
-  return tg?.WebApp?.HapticFeedback;
+  return getTelegramApp()?.HapticFeedback;
+}
+
+/** Call once at app startup. Initializes Telegram Mini App and locks screen. */
+export function initTelegramApp(): void {
+  const tg = getTelegramApp();
+  if (!tg) return;
+  try { tg.ready(); } catch { /* ignore */ }
+  try { tg.expand(); } catch { /* ignore */ }
+  try { tg.disableVerticalSwipes?.(); } catch { /* ignore */ }
 }
 
 function getAudioContext(): AudioContext | null {
