@@ -12,6 +12,7 @@ import {
   hasAnyValidPlacement,
 } from '../utils/boardUtils';
 import { calculateScore } from '../utils/scoringUtils';
+import { triggerLineClearFeedback, triggerPlacementHaptic } from '../utils/feedback';
 
 export interface PreviewState {
   row: number;
@@ -229,8 +230,7 @@ export function useBlockBlastGame() {
       const currentCombo = comboRef.current;
       const currentBest = bestScoreRef.current;
 
-      // Haptic
-      try { navigator.vibrate(12); } catch { /**/ }
+      triggerPlacementHaptic();
 
       const newBoard = placeOnBoard(currentBoard, shape, row, col);
       const newShapes: (Shape | null)[] = currentShapes.map((s, i) => (i === shapeIndex ? null : s));
@@ -258,8 +258,7 @@ export function useBlockBlastGame() {
         const remaining = finalShapes.filter((s): s is Shape => s !== null);
         const isGameOver = !hasAnyValidPlacement(clearedBoard, remaining);
 
-        // Stronger haptic for clear
-        try { navigator.vibrate([20, 10, 20]); } catch { /**/ }
+        triggerLineClearFeedback(linesCleared);
 
         animTimeoutRef.current = setTimeout(() => {
           setBoard(clearedBoard);

@@ -182,11 +182,6 @@ body {
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
-.bcell--near-full {
-  background: #1E2A48;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
 .bcell--filled {
   background: var(--cc, #888);
   box-shadow:

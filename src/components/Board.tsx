@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Board as BoardType, getNearFullLines, BOARD_SIZE } from '../utils/boardUtils';
+import { Board as BoardType, BOARD_SIZE } from '../utils/boardUtils';
 import { Shape } from '../data/shapes';
 import { PreviewState } from '../hooks/useBlockBlastGame';
 
@@ -20,7 +20,6 @@ interface CellProps {
   isPreview: boolean;
   previewValid: boolean;
   previewColor: string;
-  isNearFull: boolean;
 }
 
 const BoardCell = React.memo(function BoardCell({
@@ -31,15 +30,12 @@ const BoardCell = React.memo(function BoardCell({
   isPreview,
   previewValid,
   previewColor,
-  isNearFull,
 }: CellProps) {
   let className = 'bcell';
   if (color) {
     className += ' bcell--filled';
   } else if (isPreview) {
     className += previewValid ? ' bcell--prev-ok' : ' bcell--prev-bad';
-  } else if (isNearFull) {
-    className += ' bcell--near-full';
   } else {
     className += ' bcell--empty';
   }
@@ -69,7 +65,6 @@ export const BoardGrid = React.memo(function BoardGrid({
 }: BoardProps) {
   const clearRowSet = useMemo(() => new Set(clearingRows), [clearingRows]);
   const clearColSet = useMemo(() => new Set(clearingCols), [clearingCols]);
-  const nearFull = useMemo(() => getNearFullLines(board), [board]);
 
   // Build preview cell map: "row,col" -> isValid
   const previewCells = useMemo(() => {
@@ -97,12 +92,11 @@ export const BoardGrid = React.memo(function BoardGrid({
           isPreview: pEntry !== undefined,
           previewValid: pEntry === true,
           previewColor,
-          isNearFull: nearFull.rows.has(r) || nearFull.cols.has(c),
         });
       }
     }
     return out;
-  }, [board, previewCells, previewColor, clearRowSet, clearColSet, nearFull]);
+  }, [board, previewCells, previewColor, clearRowSet, clearColSet]);
 
   return (
     <div className="board" ref={boardRef}>

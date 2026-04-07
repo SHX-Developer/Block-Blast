@@ -59,25 +59,6 @@ export function hasAnyValidPlacement(board: Board, shapes: Shape[]): boolean {
   return shapes.some(s => canPlaceAnywhere(board, s));
 }
 
-/** Near-full threshold: rows/cols with this many or more filled cells get highlighted */
-export const NEAR_FULL_THRESHOLD = 6;
-
-export function getNearFullLines(board: Board): { rows: Set<number>; cols: Set<number> } {
-  const rows = new Set<number>();
-  const cols = new Set<number>();
-
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    const filled = board[r].filter(c => c !== '').length;
-    if (filled >= NEAR_FULL_THRESHOLD && filled < BOARD_SIZE) rows.add(r);
-  }
-  for (let c = 0; c < BOARD_SIZE; c++) {
-    const filled = board.filter(row => row[c] !== '').length;
-    if (filled >= NEAR_FULL_THRESHOLD && filled < BOARD_SIZE) cols.add(c);
-  }
-
-  return { rows, cols };
-}
-
 /**
  * Generate 3 random shapes, trying to ensure at least one is placeable on the board.
  */
