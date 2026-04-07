@@ -172,9 +172,9 @@ body {
    ════════════════════════════════════════════════════════════════════ */
 .bcell {
   border-radius: 5px;
-  transition: background-color 0.08s ease, transform 0.08s ease;
+  transition: background-color 0.1s ease, transform 0.1s ease, opacity 0.1s ease;
   position: relative;
-  will-change: transform;
+  will-change: transform, opacity;
 }
 
 .bcell--empty {
@@ -198,6 +198,12 @@ body {
   outline: 2px solid color-mix(in srgb, var(--pc, #fff) 80%, transparent);
   outline-offset: -2px;
   border-radius: 5px;
+  animation: prev-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes prev-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.72; }
 }
 
 /* Invalid preview: red tint */
@@ -207,15 +213,61 @@ body {
   border-radius: 5px;
 }
 
+/* Preview: cells in lines that would be cleared */
+.bcell--prev-clear {
+  filter: brightness(1.6) saturate(1.5);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.5),
+    0 0 16px 5px rgba(255, 255, 180, 0.35);
+  animation: prev-clear-pulse 0.55s ease-in-out infinite;
+  z-index: 1;
+}
+
+/* When preview cell overlaps a to-be-cleared line, stack both styles */
+.bcell--prev-ok.bcell--prev-clear,
+.bcell--prev-bad.bcell--prev-clear {
+  animation: prev-clear-pulse 0.55s ease-in-out infinite;
+}
+
+@keyframes prev-clear-pulse {
+  0%, 100% { filter: brightness(1.6) saturate(1.5); }
+  50%       { filter: brightness(2.4) saturate(2.0); }
+}
+
 /* Clear animation */
 .bcell--clearing {
-  animation: cell-clear 0.42s ease-in-out forwards;
+  animation: cell-clear 0.38s cubic-bezier(0.4, 0, 0.8, 0.2) var(--stagger, 0s) both;
+  z-index: 2;
 }
 
 @keyframes cell-clear {
-  0%   { transform: scale(1);    opacity: 1; background: var(--cc, #fff); }
-  35%  { transform: scale(1.12); opacity: 1; filter: brightness(2.2); }
-  100% { transform: scale(0);    opacity: 0; }
+  0%   {
+    transform: scale(1);
+    opacity: 1;
+    filter: brightness(1);
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,0.28),
+      inset 0 -2px 0 rgba(0,0,0,0.2),
+      0 2px 6px rgba(0,0,0,0.35);
+  }
+  18%  {
+    transform: scale(1.22);
+    opacity: 1;
+    filter: brightness(3.0) saturate(2);
+    box-shadow:
+      0 0 22px 8px var(--cc, #fff),
+      0 0 40px 12px rgba(255,255,255,0.3);
+  }
+  50%  {
+    transform: scale(0.85);
+    opacity: 0.7;
+    filter: brightness(1.8) saturate(1.4);
+  }
+  100% {
+    transform: scale(0) rotate(15deg);
+    opacity: 0;
+    filter: brightness(1);
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════════

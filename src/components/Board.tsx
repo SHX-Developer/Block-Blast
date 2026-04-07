@@ -20,6 +20,7 @@ interface CellProps {
   isPreview: boolean;
   previewValid: boolean;
   previewColor: string;
+  isPrevClear: boolean;
 }
 
 const BoardCell = React.memo(function BoardCell({
@@ -30,6 +31,7 @@ const BoardCell = React.memo(function BoardCell({
   isPreview,
   previewValid,
   previewColor,
+  isPrevClear,
 }: CellProps) {
   let className = 'bcell';
   if (color) {
@@ -40,10 +42,12 @@ const BoardCell = React.memo(function BoardCell({
     className += ' bcell--empty';
   }
   if (isClearing) className += ' bcell--clearing';
+  if (isPrevClear && !isClearing) className += ' bcell--prev-clear';
 
   const style: React.CSSProperties & Record<string, string> = {};
   if (color) style['--cc'] = color;
   if (isPreview && !color) style['--pc'] = previewColor;
+  if (isClearing) style['--stagger'] = `${(row + col) * 0.014}s`;
 
   return (
     <div
@@ -65,6 +69,14 @@ export const BoardGrid = React.memo(function BoardGrid({
 }: BoardProps) {
   const clearRowSet = useMemo(() => new Set(clearingRows), [clearingRows]);
   const clearColSet = useMemo(() => new Set(clearingCols), [clearingCols]);
+  const prevClearRowSet = useMemo(
+    () => new Set(preview?.isValid ? (preview.clearRows ?? []) : []),
+    [preview]
+  );
+  const prevClearColSet = useMemo(
+    () => new Set(preview?.isValid ? (preview.clearCols ?? []) : []),
+    [preview]
+  );
 
   // Build preview cell map: "row,col" -> isValid
   const previewCells = useMemo(() => {
@@ -92,11 +104,12 @@ export const BoardGrid = React.memo(function BoardGrid({
           isPreview: pEntry !== undefined,
           previewValid: pEntry === true,
           previewColor,
+          isPrevClear: prevClearRowSet.has(r) || prevClearColSet.has(c),
         });
       }
     }
     return out;
-  }, [board, previewCells, previewColor, clearRowSet, clearColSet]);
+  }, [board, previewCells, previewColor, clearRowSet, clearColSet, prevClearRowSet, prevClearColSet]);
 
   return (
     <div className="board" ref={boardRef}>

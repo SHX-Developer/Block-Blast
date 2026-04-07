@@ -18,6 +18,8 @@ export interface PreviewState {
   row: number;
   col: number;
   isValid: boolean;
+  clearRows: number[];
+  clearCols: number[];
 }
 
 interface DragInfo {
@@ -202,10 +204,24 @@ export function useBlockBlastGame() {
 
       const pos = calcPreview(e.clientX, e.clientY, info, metrics);
       const valid = canPlace(boardStateRef.current, info.shape, pos.row, pos.col);
+      let clearRows: number[] = [];
+      let clearCols: number[] = [];
+      if (valid) {
+        const tempBoard = placeOnBoard(boardStateRef.current, info.shape, pos.row, pos.col);
+        const lines = findFullLines(tempBoard);
+        clearRows = lines.rows;
+        clearCols = lines.cols;
+      }
 
       setPreview(prev => {
-        if (prev?.row === pos.row && prev?.col === pos.col && prev?.isValid === valid) return prev;
-        return { ...pos, isValid: valid };
+        if (
+          prev?.row === pos.row &&
+          prev?.col === pos.col &&
+          prev?.isValid === valid &&
+          prev?.clearRows.length === clearRows.length &&
+          prev?.clearCols.length === clearCols.length
+        ) return prev;
+        return { ...pos, isValid: valid, clearRows, clearCols };
       });
     },
     [moveFloating, calcPreview]
@@ -270,7 +286,7 @@ export function useBlockBlastGame() {
           saveBestScore(newBest);
           setShapes(finalShapes);
           if (isGameOver) setGameOver(true);
-        }, 420);
+        }, 560);
       } else {
         // No lines to clear
         const pts = calculateScore(shape.cells.length, 0, 0);
