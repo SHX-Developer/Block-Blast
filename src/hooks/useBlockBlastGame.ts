@@ -7,12 +7,12 @@ import {
   placeOnBoard,
   findFullLines,
   clearLines,
-  canPlaceAnywhere,
   generateNextShapes,
   hasAnyValidPlacement,
 } from '../utils/boardUtils';
 import { calculateScore } from '../utils/scoringUtils';
 import { triggerLineClearFeedback, triggerPlacementHaptic } from '../utils/feedback';
+import { mapShapeColor, ThemeId } from '../themes/themes';
 
 export interface PreviewState {
   row: number;
@@ -20,6 +20,14 @@ export interface PreviewState {
   isValid: boolean;
   clearRows: number[];
   clearCols: number[];
+}
+
+export interface ScorePopup {
+  id: number;
+  points: number;
+  x: number;
+  y: number;
+  big: boolean;
 }
 
 interface DragInfo {
@@ -57,7 +65,7 @@ function saveBestScore(score: number) {
   }
 }
 
-export function useBlockBlastGame() {
+export function useBlockBlastGame(themeId: ThemeId) {
   const [board, setBoard] = useState<Board>(() => createEmptyBoard());
   const [score, setScore] = useState(0);
   const [bestScore, setBestScore] = useState(getBestScore);
@@ -71,6 +79,12 @@ export function useBlockBlastGame() {
   const [clearingCols, setClearingCols] = useState<number[]>([]);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [draggedShapeIndex, setDraggedShapeIndex] = useState<number | null>(null);
+  /** Cells that were just placed — drives a quick "pop-in" animation. */
+  const [placedCells, setPlacedCells] = useState<Set<string>>(() => new Set());
+  /** Floating "+N points" popups. */
+  const [scorePopups, setScorePopups] = useState<ScorePopup[]>([]);
+  /** Last shape generation token; bumps trigger tray entrance animation. */
+  const [trayGenToken, setTrayGenToken] = useState(0);
 
   // ── Stable refs so event handlers never go stale ────────────────────────────
   const boardRef = useRef<HTMLDivElement>(null);   // board DOM element
@@ -78,6 +92,8 @@ export function useBlockBlastGame() {
   const dragInfoRef = useRef<DragInfo | null>(null);
   const boardMetricsRef = useRef<BoardMetrics | null>(null);
   const animTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const placedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popupIdRef = useRef(0);
   const activeListenersRef = useRef<{
     move: (e: PointerEvent) => void;
     up: (e: PointerEvent) => void;
@@ -98,6 +114,8 @@ export function useBlockBlastGame() {
   isAnimatingRef.current = isAnimating;
   const gameOverRef = useRef(gameOver);
   gameOverRef.current = gameOver;
+  const themeIdRef = useRef(themeId);
+  themeIdRef.current = themeId;
 
   // ── Board metrics helper ─────────────────────────────────────────────────────
   const measureBoard = useCallback((): BoardMetrics | null => {
@@ -124,12 +142,14 @@ export function useBlockBlastGame() {
       const { cellSize, gap } = metrics;
       const step = cellSize + gap;
       const bounds = getShapeBounds(shape);
+      const themedColor = mapShapeColor(shape.color, themeIdRef.current);
 
       el.innerHTML = '';
       el.style.width = `${bounds.cols * step - gap}px`;
       el.style.height = `${bounds.rows * step - gap}px`;
+      el.style.transition = 'opacity 0.18s ease';
 
-      shape.cells.forEach(([r, c]) => {
+      shape.cells.forEach(([r, c], idx) => {
         const cell = document.createElement('div');
         cell.style.cssText = `
           position:absolute;
@@ -137,15 +157,21 @@ export function useBlockBlastGame() {
           top:${r * step}px;
           width:${cellSize}px;
           height:${cellSize}px;
-          background:${shape.color};
+          background:${themedColor};
           border-radius:6px;
-          box-shadow:0 4px 16px rgba(0,0,0,0.45),inset 0 1px 0 rgba(255,255,255,0.35);
+          box-shadow:
+            0 6px 22px rgba(0,0,0,0.35),
+            inset 0 2px 0 rgba(255,255,255,0.45),
+            inset 0 -2px 0 rgba(0,0,0,0.18);
+          animation: float-pulse 1.4s ease-in-out infinite;
+          animation-delay: ${idx * 30}ms;
+          will-change: transform;
         `;
         el.appendChild(cell);
       });
 
       el.style.display = 'block';
-      el.style.opacity = '0.88';
+      el.style.opacity = '0.92';
     },
     []
   );
@@ -163,7 +189,7 @@ export function useBlockBlastGame() {
       const touchLift = info.isTouchDrag ? -(cellSize * 1.5) : 0;
       const left = px - info.grabFractionX * visW;
       const top = py - info.grabFractionY * visH + touchLift;
-      el.style.transform = `translate(${left}px,${top}px)`;
+      el.style.transform = `translate3d(${left}px,${top}px,0)`;
     },
     []
   );
@@ -192,39 +218,54 @@ export function useBlockBlastGame() {
     []
   );
 
-  // ── Pointer move ─────────────────────────────────────────────────────────────
+  // ── Pointer move (throttled via RAF for buttery smoothness) ──────────────────
+  const pendingPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const processPointerMove = useCallback(() => {
+    rafRef.current = null;
+    const pending = pendingPointerRef.current;
+    pendingPointerRef.current = null;
+    if (!pending) return;
+    const info = dragInfoRef.current;
+    const metrics = boardMetricsRef.current;
+    if (!info || !metrics) return;
+
+    moveFloating(pending.x, pending.y, info, metrics);
+
+    const pos = calcPreview(pending.x, pending.y, info, metrics);
+    const valid = canPlace(boardStateRef.current, info.shape, pos.row, pos.col);
+    let clearRows: number[] = [];
+    let clearCols: number[] = [];
+    if (valid) {
+      const tempBoard = placeOnBoard(boardStateRef.current, info.shape, pos.row, pos.col);
+      const lines = findFullLines(tempBoard);
+      clearRows = lines.rows;
+      clearCols = lines.cols;
+    }
+
+    setPreview((prev) => {
+      if (
+        prev?.row === pos.row &&
+        prev?.col === pos.col &&
+        prev?.isValid === valid &&
+        prev?.clearRows.length === clearRows.length &&
+        prev?.clearCols.length === clearCols.length
+      )
+        return prev;
+      return { ...pos, isValid: valid, clearRows, clearCols };
+    });
+  }, [moveFloating, calcPreview]);
+
   const doPointerMove = useCallback(
     (e: PointerEvent) => {
-      const info = dragInfoRef.current;
-      const metrics = boardMetricsRef.current;
-      if (!info || !metrics) return;
       e.preventDefault();
-
-      moveFloating(e.clientX, e.clientY, info, metrics);
-
-      const pos = calcPreview(e.clientX, e.clientY, info, metrics);
-      const valid = canPlace(boardStateRef.current, info.shape, pos.row, pos.col);
-      let clearRows: number[] = [];
-      let clearCols: number[] = [];
-      if (valid) {
-        const tempBoard = placeOnBoard(boardStateRef.current, info.shape, pos.row, pos.col);
-        const lines = findFullLines(tempBoard);
-        clearRows = lines.rows;
-        clearCols = lines.cols;
+      pendingPointerRef.current = { x: e.clientX, y: e.clientY };
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(processPointerMove);
       }
-
-      setPreview(prev => {
-        if (
-          prev?.row === pos.row &&
-          prev?.col === pos.col &&
-          prev?.isValid === valid &&
-          prev?.clearRows.length === clearRows.length &&
-          prev?.clearCols.length === clearCols.length
-        ) return prev;
-        return { ...pos, isValid: valid, clearRows, clearCols };
-      });
     },
-    [moveFloating, calcPreview]
+    [processPointerMove]
   );
 
   // ── Cleanup drag listeners ───────────────────────────────────────────────────
@@ -235,11 +276,25 @@ export function useBlockBlastGame() {
     document.removeEventListener('pointerup', ls.up);
     document.removeEventListener('pointercancel', ls.up);
     activeListenersRef.current = null;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    pendingPointerRef.current = null;
+  }, []);
+
+  // ── Score popup helper ──────────────────────────────────────────────────────
+  const pushScorePopup = useCallback((points: number, x: number, y: number, big: boolean) => {
+    const id = ++popupIdRef.current;
+    setScorePopups((prev) => [...prev, { id, points, x, y, big }]);
+    setTimeout(() => {
+      setScorePopups((prev) => prev.filter((p) => p.id !== id));
+    }, 1100);
   }, []);
 
   // ── Place shape (called from doPointerUp) ────────────────────────────────────
   const commitPlace = useCallback(
-    (shapeIndex: number, shape: Shape, row: number, col: number) => {
+    (shapeIndex: number, shape: Shape, row: number, col: number, dropX: number, dropY: number) => {
       const currentBoard = boardStateRef.current;
       const currentShapes = shapesRef.current;
       const currentScore = scoreRef.current;
@@ -249,8 +304,17 @@ export function useBlockBlastGame() {
       triggerPlacementHaptic();
 
       const newBoard = placeOnBoard(currentBoard, shape, row, col);
-      const newShapes: (Shape | null)[] = currentShapes.map((s, i) => (i === shapeIndex ? null : s));
+      const newShapes: (Shape | null)[] = currentShapes.map((s, i) =>
+        i === shapeIndex ? null : s
+      );
       const { rows: fullRows, cols: fullCols } = findFullLines(newBoard);
+
+      // Mark placed cells for entrance pop animation
+      const placedSet = new Set<string>();
+      shape.cells.forEach(([dr, dc]) => placedSet.add(`${row + dr},${col + dc}`));
+      setPlacedCells(placedSet);
+      if (placedTimeoutRef.current) clearTimeout(placedTimeoutRef.current);
+      placedTimeoutRef.current = setTimeout(() => setPlacedCells(new Set()), 360);
 
       if (fullRows.length > 0 || fullCols.length > 0) {
         // Show placed shape + full lines briefly, then clear
@@ -267,7 +331,7 @@ export function useBlockBlastGame() {
         const newScore = currentScore + pts;
         const newBest = Math.max(currentBest, newScore);
 
-        const allUsed = newShapes.every(s => s === null);
+        const allUsed = newShapes.every((s) => s === null);
         const finalShapes: (Shape | null)[] = allUsed
           ? generateNextShapes(clearedBoard)
           : newShapes;
@@ -275,6 +339,7 @@ export function useBlockBlastGame() {
         const isGameOver = !hasAnyValidPlacement(clearedBoard, remaining);
 
         triggerLineClearFeedback(linesCleared);
+        pushScorePopup(pts, dropX, dropY, true);
 
         animTimeoutRef.current = setTimeout(() => {
           setBoard(clearedBoard);
@@ -285,6 +350,7 @@ export function useBlockBlastGame() {
           setBestScore(newBest);
           saveBestScore(newBest);
           setShapes(finalShapes);
+          if (allUsed) setTrayGenToken((t) => t + 1);
           if (isGameOver) setGameOver(true);
         }, 560);
       } else {
@@ -293,7 +359,7 @@ export function useBlockBlastGame() {
         const newScore = currentScore + pts;
         const newBest = Math.max(currentBest, newScore);
 
-        const allUsed = newShapes.every(s => s === null);
+        const allUsed = newShapes.every((s) => s === null);
         const finalShapes: (Shape | null)[] = allUsed
           ? generateNextShapes(newBoard)
           : newShapes;
@@ -302,14 +368,16 @@ export function useBlockBlastGame() {
 
         setBoard(newBoard);
         setShapes(finalShapes);
+        if (allUsed) setTrayGenToken((t) => t + 1);
         setScore(newScore);
         setBestScore(newBest);
         saveBestScore(newBest);
         setCombo(0);
+        pushScorePopup(pts, dropX, dropY, false);
         if (isGameOver) setGameOver(true);
       }
     },
-    []
+    [pushScorePopup]
   );
 
   // ── Pointer up ───────────────────────────────────────────────────────────────
@@ -328,7 +396,7 @@ export function useBlockBlastGame() {
 
       const pos = calcPreview(e.clientX, e.clientY, info, metrics);
       if (canPlace(boardStateRef.current, info.shape, pos.row, pos.col)) {
-        commitPlace(info.shapeIndex, info.shape, pos.row, pos.col);
+        commitPlace(info.shapeIndex, info.shape, pos.row, pos.col, e.clientX, e.clientY);
       }
     },
     [removeDragListeners, hideFloating, calcPreview, commitPlace]
@@ -339,7 +407,7 @@ export function useBlockBlastGame() {
     (
       e: React.PointerEvent,
       shapeIndex: number,
-      cardEl: HTMLElement,
+      _cardEl: HTMLElement,
       gridEl: HTMLElement
     ) => {
       const shape = shapesRef.current[shapeIndex];
@@ -387,6 +455,7 @@ export function useBlockBlastGame() {
   // ── Restart ──────────────────────────────────────────────────────────────────
   const restart = useCallback(() => {
     if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current);
+    if (placedTimeoutRef.current) clearTimeout(placedTimeoutRef.current);
     removeDragListeners();
     hideFloating();
     dragInfoRef.current = null;
@@ -395,6 +464,7 @@ export function useBlockBlastGame() {
     setBoard(emptyBoard);
     setScore(0);
     setShapes(generateNextShapes(emptyBoard));
+    setTrayGenToken((t) => t + 1);
     setGameOver(false);
     setCombo(0);
     setIsAnimating(false);
@@ -402,12 +472,15 @@ export function useBlockBlastGame() {
     setClearingCols([]);
     setPreview(null);
     setDraggedShapeIndex(null);
+    setPlacedCells(new Set());
+    setScorePopups([]);
   }, [removeDragListeners, hideFloating]);
 
   // ── Cleanup on unmount ───────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current);
+      if (placedTimeoutRef.current) clearTimeout(placedTimeoutRef.current);
       removeDragListeners();
     };
   }, [removeDragListeners]);
@@ -424,6 +497,9 @@ export function useBlockBlastGame() {
     clearingCols,
     preview,
     draggedShapeIndex,
+    placedCells,
+    scorePopups,
+    trayGenToken,
     boardRef,
     floatingRef,
     handleShapePointerDown,

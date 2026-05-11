@@ -1,10 +1,14 @@
 import React, { useRef, useCallback } from 'react';
 import { Shape, getShapeBounds } from '../data/shapes';
+import { mapShapeColor, ThemeId } from '../themes/themes';
 
 interface ShapeCardProps {
   shape: Shape | null;
   index: number;
   isDragging: boolean;
+  themeId: ThemeId;
+  /** Increments each time a fresh set of shapes spawns — used to retrigger entrance anim. */
+  genToken: number;
   onPointerDown: (
     e: React.PointerEvent,
     index: number,
@@ -22,6 +26,8 @@ export const ShapeCard = React.memo(function ShapeCard({
   shape,
   index,
   isDragging,
+  themeId,
+  genToken,
   onPointerDown,
 }: ShapeCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -41,16 +47,23 @@ export const ShapeCard = React.memo(function ShapeCard({
 
   const bounds = getShapeBounds(shape);
   const maxDim = Math.max(bounds.rows, bounds.cols);
-  const cellSize = Math.min(Math.floor((CARD_INNER - (maxDim - 1) * CELL_GAP) / maxDim), MAX_CELL);
+  const cellSize = Math.min(
+    Math.floor((CARD_INNER - (maxDim - 1) * CELL_GAP) / maxDim),
+    MAX_CELL
+  );
   const step = cellSize + CELL_GAP;
 
   const gridW = bounds.cols * step - CELL_GAP;
   const gridH = bounds.rows * step - CELL_GAP;
+  const themedColor = mapShapeColor(shape.color, themeId);
 
   return (
     <div
       ref={cardRef}
+      // key on genToken+index so a remount triggers the entrance animation
+      key={`${genToken}-${index}`}
       className={`shape-card${isDragging ? ' shape-card--dragging' : ''}`}
+      style={{ animationDelay: `${index * 70}ms` } as React.CSSProperties}
       onPointerDown={handlePointerDown}
     >
       <div
@@ -68,7 +81,7 @@ export const ShapeCard = React.memo(function ShapeCard({
               top: r * step,
               width: cellSize,
               height: cellSize,
-              background: shape.color,
+              background: themedColor,
             }}
           />
         ))}

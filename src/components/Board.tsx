@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Board as BoardType, BOARD_SIZE } from '../utils/boardUtils';
 import { Shape } from '../data/shapes';
 import { PreviewState } from '../hooks/useBlockBlastGame';
+import { mapShapeColor, ThemeId } from '../themes/themes';
 
 interface BoardProps {
   board: BoardType;
@@ -9,6 +10,8 @@ interface BoardProps {
   draggedShape: Shape | null;
   clearingRows: number[];
   clearingCols: number[];
+  placedCells: Set<string>;
+  themeId: ThemeId;
   boardRef: React.RefObject<HTMLDivElement>;
 }
 
@@ -21,6 +24,7 @@ interface CellProps {
   previewValid: boolean;
   previewColor: string;
   isPrevClear: boolean;
+  isJustPlaced: boolean;
 }
 
 const BoardCell = React.memo(function BoardCell({
@@ -32,6 +36,7 @@ const BoardCell = React.memo(function BoardCell({
   previewValid,
   previewColor,
   isPrevClear,
+  isJustPlaced,
 }: CellProps) {
   let className = 'bcell';
   if (color) {
@@ -43,6 +48,7 @@ const BoardCell = React.memo(function BoardCell({
   }
   if (isClearing) className += ' bcell--clearing';
   if (isPrevClear && !isClearing) className += ' bcell--prev-clear';
+  if (isJustPlaced && !isClearing) className += ' bcell--placed';
 
   const style: React.CSSProperties & Record<string, string> = {};
   if (color) style['--cc'] = color;
@@ -65,6 +71,8 @@ export const BoardGrid = React.memo(function BoardGrid({
   draggedShape,
   clearingRows,
   clearingCols,
+  placedCells,
+  themeId,
   boardRef,
 }: BoardProps) {
   const clearRowSet = useMemo(() => new Set(clearingRows), [clearingRows]);
@@ -88,7 +96,10 @@ export const BoardGrid = React.memo(function BoardGrid({
     return map;
   }, [preview, draggedShape]);
 
-  const previewColor = draggedShape?.color ?? '#ffffff';
+  const previewColor = useMemo(
+    () => mapShapeColor(draggedShape?.color ?? '#ffffff', themeId),
+    [draggedShape, themeId]
+  );
 
   const cells = useMemo(() => {
     const out: CellProps[] = [];
@@ -96,24 +107,36 @@ export const BoardGrid = React.memo(function BoardGrid({
       for (let c = 0; c < BOARD_SIZE; c++) {
         const key = `${r},${c}`;
         const pEntry = previewCells.get(key);
+        const rawColor = board[r][c];
         out.push({
           row: r,
           col: c,
-          color: board[r][c],
+          color: rawColor ? mapShapeColor(rawColor, themeId) : '',
           isClearing: clearRowSet.has(r) || clearColSet.has(c),
           isPreview: pEntry !== undefined,
           previewValid: pEntry === true,
           previewColor,
           isPrevClear: prevClearRowSet.has(r) || prevClearColSet.has(c),
+          isJustPlaced: placedCells.has(key),
         });
       }
     }
     return out;
-  }, [board, previewCells, previewColor, clearRowSet, clearColSet, prevClearRowSet, prevClearColSet]);
+  }, [
+    board,
+    previewCells,
+    previewColor,
+    clearRowSet,
+    clearColSet,
+    prevClearRowSet,
+    prevClearColSet,
+    placedCells,
+    themeId,
+  ]);
 
   return (
     <div className="board" ref={boardRef}>
-      {cells.map(cell => (
+      {cells.map((cell) => (
         <BoardCell key={`${cell.row}-${cell.col}`} {...cell} />
       ))}
     </div>

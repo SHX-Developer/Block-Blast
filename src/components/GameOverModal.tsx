@@ -5,10 +5,17 @@ interface GameOverModalProps {
   score: number;
   bestScore: number;
   onRestart: () => void;
+  onMenu: () => void;
   visible: boolean;
 }
 
-export function GameOverModal({ score, bestScore, onRestart, visible }: GameOverModalProps) {
+export function GameOverModal({
+  score,
+  bestScore,
+  onRestart,
+  onMenu,
+  visible,
+}: GameOverModalProps) {
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -27,7 +34,7 @@ export function GameOverModal({ score, bestScore, onRestart, visible }: GameOver
   return (
     <div className={`modal-overlay${shown ? ' modal-overlay--in' : ''}`}>
       <div className={`modal${shown ? ' modal--in' : ''}`}>
-        <div className="modal-icon">💥</div>
+        <div className="modal-icon" aria-hidden>💥</div>
         <h2 className="modal-title">Game Over</h2>
 
         {isNewBest && <div className="modal-badge">New Best!</div>}
@@ -46,6 +53,9 @@ export function GameOverModal({ score, bestScore, onRestart, visible }: GameOver
 
         <button className="modal-btn" onClick={onRestart}>
           Play Again
+        </button>
+        <button className="modal-btn modal-btn--ghost" onClick={onMenu}>
+          Main Menu
         </button>
       </div>
     </div>
