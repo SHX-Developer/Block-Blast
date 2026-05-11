@@ -1,0 +1,58 @@
+# Dokploy compose — Dokploy builds the images on the VPS via BuildKit.
+# Fill DOMAIN / BOT_TOKEN / DATABASE_URL in the Dokploy app's environment tab.
+#
+# Optimized builds:
+#   • BuildKit cache mounts in both Dockerfiles → npm install is cached across builds
+#   • multi-stage builds → final images contain only runtime artifacts
+#   • Dockerfile copies package*.json before src → unchanged deps = cached layer hit
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - blockblast-web:latest
+    image: blockblast-web:latest
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.blockblast-web.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.blockblast-web.entrypoints=websecure
+      - traefik.http.routers.blockblast-web.tls=true
+      - traefik.http.routers.blockblast-web.tls.certresolver=letsencrypt
+      - traefik.http.services.blockblast-web.loadbalancer.server.port=80
+      # HTTP -> HTTPS redirect
+      - traefik.http.routers.blockblast-web-http.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.blockblast-web-http.entrypoints=web
+      - traefik.http.routers.blockblast-web-http.middlewares=blockblast-redirect
+      - traefik.http.middlewares.blockblast-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.blockblast-redirect.redirectscheme.permanent=true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+      cache_from:
+        - blockblast-bot:latest
+    image: blockblast-bot:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      BOT_TOKEN: ${BOT_TOKEN}
+      WEB_APP_URL: https://${DOMAIN}
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
