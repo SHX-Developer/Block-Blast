@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(grep -E \"^\\(tsc|vite\\)$\")",
+      "Bash(npm --version)",
+      "Bash(echo \"DONE: $?\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(yarn --version)",
+      "Bash(pnpm --version)",
+      "Bash(npm config:*)",
+      "Bash(echo \"DONE:$?\")",
+      "Bash(/opt/homebrew/bin/node -e \"console.log\\(require\\('fs'\\).readdirSync\\('.'\\)\\)\")",
+      "Bash(/opt/homebrew/bin/node -e \"console.log\\(42\\)\")",
+      "Bash(codesign -v /opt/homebrew/bin/node)",
+      "Bash(spctl --assess /opt/homebrew/bin/node)"
+    ]
+  }
+}
